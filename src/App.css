@@ -90,10 +90,25 @@ button {
   border-radius: 8px;
 }
 
-.btn-scan { background-color: #2563eb; }
-.btn-vision { background-color: #a855f7; }
-.btn-isbn { background-color: #6366f1; }
-.btn-manual { background-color: #16a34a; }
+/* Scan Barcode */
+.btn-style-0 { 
+  background-color: #2563eb; 
+}
+
+/* Vision AI */
+.btn-style-1 { 
+  background-color: #a855f7; 
+}
+
+/* ISBN Lookup */
+.btn-style-2 { 
+  background-color: #6366f1; 
+}
+
+/* Manual Entry */
+.btn-style-3 { 
+  background-color: #16a34a; 
+}
 
 /* Search Bar */
 .search-container {

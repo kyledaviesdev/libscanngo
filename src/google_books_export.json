@@ -4,14 +4,23 @@
     "volumeInfo": {
       "title": "The Great Gatsby",
       "authors": ["F. Scott Fitzgerald"],
-      "categories": ["Fiction"],
-      "publishedDate": "1925",
-      "imageLinks": {
-        "thumbnail": "http://books.google.com/books/content?id=v_m6DwAAQBAJ&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
-      },
+      "publisher": "Scribner",
+      "publishedDate": "2004-09-30",
+      "description": "The Great Gatsby is a 1925 tragedy novel by American writer F. Scott Fitzgerald. Set in the Jazz Age on Long Island, near New York City, the novel depicts first-person narrator Nick Carraway's interactions with Jay Gatsby, a mysterious millionaire obsessed with reuniting with his former lover, Daisy Buchanan.",
       "industryIdentifiers": [
-        { "type": "ISBN_13", "identifier": "9780743273565" }
-      ]
+        { "type": "ISBN_10", "identifier": "0521402301" },
+        { "type": "ISBN_13", "identifier": "9780521402309" }
+      ],
+      "pageCount": 180,
+      "categories": ["Fiction"],
+      "averageRating": 4.5,
+      "imageLinks": {
+        "smallThumbnail": "http://books.google.com/...&zoom=5",
+        "thumbnail": "http://books.google.com/...&zoom=1"
+      },
+      "language": "en",
+      "previewLink": "http://books.google.com/books?id=v_m6DwAAQBAJ",
+      "infoLink": "http://books.google.com/books?id=v_m6DwAAQBAJ"
     }
   },
   {
@@ -22,7 +31,7 @@
       "categories": ["Science"],
       "publishedDate": "1988",
       "imageLinks": {
-        "thumbnail": "http://books.google.com/books/content?id=e_NIDwAAQBAJ&printsec=frontcover&img=1&zoom=1&edge=curl&source=gbs_api"
+        "thumbnail": "http://books.google.com/books/content?id=e_NIDwAAQBAJ&printsec=frontcover&img=1&zoom=&edge=curl&source=gbs_api"
       }
     }
   }

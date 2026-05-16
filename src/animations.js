@@ -36,3 +36,25 @@ export const iconHover = {
   scale: 1.2,
   rotate: 5
 };
+
+export const modalOverlayVariants = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1 },
+  exit: { opacity: 0 }
+};
+
+export const modalContentVariants = {
+  hidden: { y: 50, opacity: 0, scale: 0.95 },
+  show: { 
+    y: 0, 
+    opacity: 1, 
+    scale: 1, 
+    transition: { type: 'spring', damping: 25, stiffness: 300 } 
+  },
+  exit: { 
+    y: 20, 
+    opacity: 0, 
+    scale: 0.95, 
+    transition: { duration: 0.2 } 
+  }
+};

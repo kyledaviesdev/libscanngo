@@ -21,6 +21,8 @@ function App() {
   const [books, setBooks] = useState(defaultBooks); 
   const [searchQuery, setSearchQuery] = useState(''); 
   const [activeModal, setActiveModal] = useState(null); // Tracks which popup is open
+  const [isbnInput, setIsbnInput] = useState('');
+  const [selectedBook, setSelectedBook] = useState(null);
   const fileInputRef = useRef(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -31,19 +33,43 @@ function App() {
     const file = event.target.files[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const importedData = JSON.parse(e.target.result);
-        const newBooks = Array.isArray(importedData) ? importedData : [importedData];
-        setBooks(newBooks);
-      } catch (err) {
-        alert("Failed to parse JSON. Ensure it matches the Google Books format.");
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = null; 
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const importedData = JSON.parse(e.target.result);
+      const newBooks = Array.isArray(importedData) ? importedData : [importedData];
+      setBooks(newBooks);
+    } catch (err) {
+      alert("Failed to parse JSON. Ensure it matches the Google Books format.");
+    }
   };
+  reader.readAsText(file);
+  event.target.value = null; 
+};
+
+// Fetch a book from the Google Books API using its ISBN
+const fetchBookByISBN = async (isbn) => {
+  if (!isbn.trim()) {
+    alert("Please enter an ISBN first.");
+    return;
+  }
+  
+  try {
+    const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&key=AIzaSyCCQGMIew_qFt_0JhSp_IeqT1ZaMvn00y4`);
+    const data = await response.json();
+
+    if (data.totalItems > 0) {
+      const newBook = data.items[0]; 
+      setBooks(prevBooks => [newBook, ...prevBooks]);
+      closeModal(); 
+    } else {
+      alert("Book not found in Google Books database.");
+    }
+  } catch (error) {
+    console.error("Error fetching from Google Books:", error);
+    alert("Failed to connect to the API.");
+  }
+};
 
   const deleteBook = (id) => {
     setBooks(prev => prev.filter(book => book.id !== id));
@@ -58,7 +84,11 @@ function App() {
     );
   });
 
-  const closeModal = () => setActiveModal(null);
+  const closeModal = () => {
+  setActiveModal(null);
+  setIsbnInput('');
+  setSelectedBook(null);
+};
 
   // --- DYNAMIC MODAL CONTENT RENDERING ---
   const renderModalContent = () => {
@@ -94,9 +124,22 @@ function App() {
           <>
             <div className="form-group">
               <label>Enter ISBN</label>
-              <input type="text" placeholder="e.g. 9780743273565" autoFocus />
+              <input 
+                type="text" 
+                placeholder="e.g. 9780743273565" 
+                autoFocus 
+                value={isbnInput}
+                onChange={(e) => setIsbnInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') fetchBookByISBN(isbnInput);
+                }}
+              />
             </div>
-            <motion.button whileTap={tapShrink} className="btn btn-submit">
+            <motion.button 
+              whileTap={tapShrink} 
+              className="btn btn-submit"
+              onClick={() => fetchBookByISBN(isbnInput)}
+            >
               Fetch from Google Books
             </motion.button>
           </>
@@ -120,6 +163,85 @@ function App() {
               Save to Library
             </motion.button>
           </>
+        );
+        case 'Book Details':
+        if (!selectedBook) return null;
+        const volumeInfo = selectedBook.volumeInfo;
+        
+        return (
+          <div className="book-detailed-view" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            {/* Top Section: Cover & Key Metadata */}
+            <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+              {volumeInfo.imageLinks?.thumbnail ? (
+                <img 
+                  src={volumeInfo.imageLinks.thumbnail} 
+                  alt={volumeInfo.title} 
+                  style={{ width: '100px', height: '140px', objectFit: 'cover', borderRadius: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }} 
+                />
+              ) : (
+                <div className="book-cover-placeholder" style={{ width: '100px', height: '140px' }}><span>📖</span></div>
+              )}
+              
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: '0 0 4px 0', fontSize: '20px', lineHeight: '1.2' }}>{volumeInfo.title}</h3>
+                <p style={{ margin: '0 0 12px 0', color: 'var(--text-muted)', fontSize: '15px' }}>
+                  By {volumeInfo.authors?.join(', ') || 'Unknown Author'}
+                </p>
+                
+                {volumeInfo.categories && (
+                  <span className="book-badge" style={{ display: 'inline-block', marginBottom: '10px' }}>
+                    {volumeInfo.categories.join(', ')}
+                  </span>
+                )}
+                
+                <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <p style={{ margin: 0 }}><strong>Publisher:</strong> {volumeInfo.publisher || 'N/A'}</p>
+                  <p style={{ margin: 0 }}><strong>Published:</strong> {volumeInfo.publishedDate || 'N/A'}</p>
+                  <p style={{ margin: 0 }}><strong>Pages:</strong> {volumeInfo.pageCount || 'N/A'} pages</p>
+                  {volumeInfo.averageRating && (
+                    <p style={{ margin: 0 }}><strong>Rating:</strong> ⭐ {volumeInfo.averageRating} / 5</p>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Middle Section: Scrollable Summary/Description */}
+            {volumeInfo.description && (
+              <>
+                <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '8px 0' }} />
+                <div>
+                  <h4 style={{ margin: '0 0 6px 0', fontSize: '14px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Description</h4>
+                  <p style={{ 
+                    fontSize: '14px', 
+                    lineHeight: '1.5', 
+                    color: 'var(--text-main)', 
+                    maxHeight: '160px', 
+                    overflowY: 'auto', 
+                    paddingRight: '6px' 
+                  }}>
+                    {volumeInfo.description}
+                  </p>
+                </div>
+              </>
+            )}
+            
+            {/* Bottom Section: System Identifiers (ISBNs) */}
+            {volumeInfo.industryIdentifiers && (
+              <div style={{ 
+                display: 'flex', 
+                gap: '15px', 
+                fontSize: '12px', 
+                color: 'var(--text-muted)', 
+                marginTop: '5px',
+                borderTop: '1px dashed var(--border-color)',
+                paddingTop: '10px'
+              }}>
+                {volumeInfo.industryIdentifiers.map((id) => (
+                  <span key={id.identifier}><strong>{id.type}:</strong> {id.identifier}</span>
+                ))}
+              </div>
+            )}
+          </div>
         );
       default:
         return null;
@@ -221,6 +343,11 @@ function App() {
                   variants={itemVariants}
                   layout 
                   exit="exit"
+                  whileHover={{ scale: 1.02, cursor: 'pointer' }} // Enhances UX visually
+                  onClick={() => {
+                    setActiveModal('Book Details'); // Tells the modal to open
+                    setSelectedBook(book);          // Sends the book data to state
+                  }}
                 >
                   <div className="book-cover-container">
                     {info.imageLinks?.thumbnail ? (
@@ -234,10 +361,19 @@ function App() {
                     <div className="book-title-row">
                       <h3>{info.title}</h3>
                       <div className="book-card-actions">
-                        <motion.button whileHover={iconHover} className="icon-btn">👤+</motion.button>
                         <motion.button 
                           whileHover={iconHover} 
-                          onClick={() => deleteBook(book.id)}
+                          className="icon-btn"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          👤+
+                        </motion.button>
+                        <motion.button 
+                          whileHover={iconHover} 
+                          onClick={(e) => {
+                            e.stopPropagation(); // ← Prevents modal from popping open
+                            deleteBook(book.id);
+                          }}
                           className="icon-btn delete-text"
                         >
                           🗑

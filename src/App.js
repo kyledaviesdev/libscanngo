@@ -1,5 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import Tesseract from 'tesseract.js';
+import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import './App.css';
 
 // Importing our default book data (Google Books API format)
@@ -16,15 +18,180 @@ import {
   modalContentVariants
 } from './animations';
 
+const BarcodeScannerPlugin = ({ onScanSuccess }) => {
+  const scannerRef = useRef(null);
+  useEffect(() => {
+    // Clear out any duplicate HTML injected by React Strict Mode
+    const scannerElement = document.getElementById("reader");
+    if (scannerElement) {
+      scannerElement.innerHTML = "";
+    }
+
+    if (!scannerRef.current) {
+      scannerRef.current = new Html5QrcodeScanner(
+        "reader", 
+        { 
+          fps: 15, 
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13 // ONLY look for standard 13-digit book ISBNs
+          ]
+        }, 
+        false
+      );
+
+      scannerRef.current.render(
+        (decodedText) => {
+          if (scannerRef.current) {
+            scannerRef.current.clear().then(() => {
+              onScanSuccess(decodedText);
+            }).catch(e => console.error("Error clearing scanner", e));
+          }
+        },
+        (errorMessage) => {
+          // Safe to ignore background noise
+        }
+      );
+    }
+
+    // Cleanup: Shut down the camera when the modal closes
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(error => {
+          console.error("Failed to clear scanner: ", error);
+        });
+        scannerRef.current = null; // Reset the ref
+      }
+    };
+  }, []); // <-- Empty array ensures this only runs once
+
+  return <div id="reader" style={{ width: '100%', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-card)' }}></div>;
+};
+
+const VisionAIPlugin = ({ onProcessImage }) => {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  useEffect(() => {
+    // 1. Request native camera access
+    const startCamera = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: "environment" } // Prefers rear camera on mobile
+        });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        console.error("Camera access denied or unavailable:", err);
+      }
+    };
+
+    startCamera();
+
+    // 2. Strict cleanup to prevent ghost cameras
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  const takePicture = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      // Match canvas size to video stream
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      
+      // Draw the current video frame onto the canvas
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      // Convert to base64 image string
+      const imageData = canvas.toDataURL('image/jpeg');
+      
+      // Update UI state
+      setCapturedImage(imageData);
+      setIsAnalyzing(true);
+      
+      // Turn off the live camera feed
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+
+      // Send the image up to the parent component for API processing
+      onProcessImage(imageData);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+      <div className="camera-placeholder" style={{ padding: 0, backgroundColor: '#000' }}>
+        
+        {/* State 1: Live Video Feed */}
+        {!capturedImage && (
+          <video 
+            ref={videoRef} 
+            autoPlay 
+            playsInline 
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        )}
+
+        {/* State 2: Captured Image with Scan Line Animation */}
+        {capturedImage && isAnalyzing && (
+          <>
+            <img 
+              src={capturedImage} 
+              alt="Captured cover" 
+              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }} 
+            />
+            <div className="scan-line vision-scan-line"></div>
+            <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', color: 'white', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
+              <span style={{ fontSize: '30px', display: 'block', textAlign: 'center' }}>🤖</span>
+              <p style={{ margin: '5px 0 0 0', fontWeight: 'bold' }}>Extracting Text...</p>
+            </div>
+          </>
+        )}
+
+        {/* Hidden Canvas used for capturing the frame */}
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
+      </div>
+
+      {!isAnalyzing && (
+        <button 
+          className="btn btn-submit" 
+          style={{ backgroundColor: '#a855f7' }} // Vision AI Purple
+          onClick={takePicture}
+        >
+          📷 Capture Cover
+        </button>
+      )}
+    </div>
+  );
+};
+
 function App() {
   // --- STATE MANAGEMENT ---
   const [books, setBooks] = useState(defaultBooks); 
   const [searchQuery, setSearchQuery] = useState(''); 
-  const [activeModal, setActiveModal] = useState(null); // Tracks which popup is open
+  const [activeModal, setActiveModal] = useState(null); 
   const [isbnInput, setIsbnInput] = useState('');
   const [selectedBook, setSelectedBook] = useState(null);
+  const [modalError, setModalError] = useState('');
+  const [ocrProgress, setOcrProgress] = useState(null);
   const fileInputRef = useRef(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [visionQuery, setVisionQuery] = useState('');      // Holds the editable OCR text
+  const [visionResults, setVisionResults] = useState([]);  // Holds the Google Books API results
+  const [isSearchingVision, setIsSearchingVision] = useState(false); // Loading state for the API
 
   // --- LOGIC FUNCTIONS ---
   const triggerFileSelect = () => fileInputRef.current.click();
@@ -49,28 +216,54 @@ function App() {
 
 // Fetch a book from the Google Books API using its ISBN
 const fetchBookByISBN = async (isbn) => {
-  if (!isbn.trim()) {
-    alert("Please enter an ISBN first.");
-    return;
-  }
-  
-  try {
-    const apiKey = process.env.REACT_APP_GOOGLE_BOOKS_API_KEY;
-    const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&key=${apiKey}`);
-    const data = await response.json();
-
-    if (data.totalItems > 0) {
-      const newBook = data.items[0]; 
-      setBooks(prevBooks => [newBook, ...prevBooks]);
-      closeModal(); 
-    } else {
-      alert("Book not found in Google Books database.");
+    setModalError(''); // Clear previous errors when trying again
+    if (!isbn.trim()) {
+      setModalError("Please enter an ISBN first.");
+      return;
     }
-  } catch (error) {
-    console.error("Error fetching from Google Books:", error);
-    alert("Failed to connect to the API.");
-  }
-};
+    
+    try {
+      const apiKey = process.env.REACT_APP_GOOGLE_BOOKS_API_KEY;
+      const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&key=${apiKey}`);
+      const data = await response.json();
+
+      if (data.totalItems > 0) {
+        const newBook = data.items[0]; 
+        setBooks(prevBooks => [newBook, ...prevBooks]);
+        closeModal(); 
+      } else {
+        // UPDATE: Set the declarative error instead of alerting
+        setModalError(`No book found for barcode: ${isbn}`);
+      }
+    } catch (error) {
+      console.error("Error fetching from Google Books:", error);
+      setModalError("Failed to connect to the Google Books API.");
+    }
+  };
+
+  const fetchBooksByText = async (query) => {
+    setModalError('');
+    setIsSearchingVision(true);
+    setVisionResults([]); // Clear previous results
+
+    try {
+      const apiKey = process.env.REACT_APP_GOOGLE_BOOKS_API_KEY;
+      // Note: We use encodeURIComponent to handle spaces and special characters safely
+      const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&key=${apiKey}`);
+      const data = await response.json();
+
+      if (data.items && data.items.length > 0) {
+        setVisionResults(data.items);
+      } else {
+        setModalError(`No books found matching: "${query}"`);
+      }
+    } catch (error) {
+      console.error("Error fetching from Google Books:", error);
+      setModalError("Failed to connect to the Google Books API.");
+    } finally {
+      setIsSearchingVision(false);
+    }
+  };
 
   const deleteBook = (id) => {
     setBooks(prev => prev.filter(book => book.id !== id));
@@ -86,39 +279,206 @@ const fetchBookByISBN = async (isbn) => {
   });
 
   const closeModal = () => {
-  setActiveModal(null);
-  setIsbnInput('');
-  setSelectedBook(null);
-};
+    setActiveModal(null);
+    setIsbnInput('');
+    setSelectedBook(null);
+    setModalError('');
+    setVisionQuery('');
+    setVisionResults([]);
+    setOcrProgress(null);
+  };
 
   // --- DYNAMIC MODAL CONTENT RENDERING ---
   const renderModalContent = () => {
     switch (activeModal) {
       case 'Scan Barcode':
         return (
-          <>
-            <div className="camera-placeholder">
-              <div className="scan-line"></div>
-              <span style={{ fontSize: '40px' }}>📷</span>
-              <p style={{ marginTop: '10px' }}>Position barcode within frame</p>
-            </div>
-            <p style={{ fontSize: '14px', color: '#666', textAlign: 'center' }}>
-              Waiting for hardware scanner or camera input...
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <p style={{ fontSize: '14px', color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
+              Hold the book's barcode steady in front of the camera.
             </p>
-          </>
+            
+            {/* Declarative animated error message */}
+            <AnimatePresence>
+              {modalError && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  style={{ padding: '12px', backgroundColor: '#fee2e2', color: '#dc2626', borderRadius: '6px', fontSize: '14px', textAlign: 'center', border: '1px solid #f87171' }}
+                >
+                  <strong>Scan Failed:</strong> {modalError}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Toggle between the active camera and a reset button */}
+            {!modalError ? (
+              <BarcodeScannerPlugin 
+                onScanSuccess={(decodedISBN) => {
+                  const cleanISBN = decodedISBN.replace(/[^0-9]/g, '');
+                  
+                  // NEW: Guard clause to ensure it's a valid ISBN length
+                  if (cleanISBN.length !== 10 && cleanISBN.length !== 13) {
+                    setModalError(`Invalid barcode format scanned (${cleanISBN}). Please scan the main ISBN barcode.`);
+                    return;
+                  }
+
+                  setIsbnInput(cleanISBN); 
+                  fetchBookByISBN(cleanISBN);
+                }} 
+              />
+            ) : (
+              <motion.button 
+                whileTap={tapShrink}
+                className="btn btn-submit"
+                onClick={() => setModalError('')} // Clears error and re-mounts the camera
+              >
+                Try Scanning Again
+              </motion.button>
+            )}
+          </div>
         );
       case 'Vision AI':
         return (
-          <>
-            <div className="camera-placeholder">
-              <div className="scan-line vision-scan-line"></div>
-              <span style={{ fontSize: '40px' }}>🤖</span>
-              <p style={{ marginTop: '10px' }}>Analyzing book cover...</p>
-            </div>
-            <p style={{ fontSize: '14px', color: '#666', textAlign: 'center' }}>
-              Powered by Vision AI cover recognition
-            </p>
-          </>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            
+            {/* STEP 1: CAPTURE & OCR */}
+            {/* Only show the camera if we haven't extracted text yet and don't have results */}
+            {!visionQuery && visionResults.length === 0 && (
+              <>
+                <p style={{ fontSize: '14px', color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
+                  Position the book cover clearly in the frame.
+                </p>
+                <VisionAIPlugin 
+                  onProcessImage={async (base64Image) => {
+                    setModalError('');
+                    setOcrProgress('Initializing AI Engine...');
+                    try {
+                      const result = await Tesseract.recognize(
+                        base64Image, 'eng',
+                        { logger: m => {
+                            if (m.status === 'recognizing text') setOcrProgress(`Reading text: ${Math.round(m.progress * 100)}%`);
+                            else setOcrProgress("Loading language models...");
+                          }
+                        }
+                      );
+                      
+                      const extractedText = result.data.text.replace(/\n/g, ' ').trim();
+                      if (extractedText.length > 3) {
+                        // SUCCESS: Move to Step 2 by setting the editable query
+                        setVisionQuery(extractedText.substring(0, 100)); 
+                      } else {
+                        setModalError("No readable text found. Try again.");
+                      }
+                    } catch (error) {
+                      setModalError("Vision AI processing failed.");
+                    } finally {
+                      setOcrProgress(null);
+                    }
+                  }} 
+                />
+              </>
+            )}
+
+            {/* STEP 2: REVIEW & EDIT */}
+            {/* Show this if we have text from the OCR, but haven't fetched results yet */}
+            {visionQuery && visionResults.length === 0 && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                <div className="form-group">
+                  <label>Verify Extracted Text</label>
+                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 5px 0' }}>
+                    Edit any typos before searching.
+                  </p>
+                  <input 
+                    type="text" 
+                    value={visionQuery} 
+                    onChange={(e) => setVisionQuery(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+                
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <motion.button 
+                    whileTap={tapShrink} 
+                    className="btn btn-theme" 
+                    style={{ flex: 1 }}
+                    onClick={() => setVisionQuery('')} // Go back to camera
+                  >
+                    Retake
+                  </motion.button>
+                  <motion.button 
+                    whileTap={tapShrink} 
+                    className="btn btn-submit" 
+                    style={{ flex: 2, margin: 0, backgroundColor: '#a855f7' }}
+                    onClick={() => fetchBooksByText(visionQuery)}
+                  >
+                    {isSearchingVision ? 'Searching...' : 'Search Google Books'}
+                  </motion.button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* STEP 3: SELECT EDITION */}
+            {/* Show the list of books returned from the API */}
+            {visionResults.length > 0 && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Select Correct Edition:</label>
+                  <button 
+                    onClick={() => setVisionResults([])} // Go back to edit
+                    style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', cursor: 'pointer', padding: 0 }}
+                  >
+                    ← Back to Edit
+                  </button>
+                </div>
+                
+                {/* Scrollable list of results */}
+                <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '5px' }}>
+                  {visionResults.map(book => {
+                    const info = book.volumeInfo;
+                    return (
+                      <div key={book.id} style={{ display: 'flex', gap: '10px', padding: '10px', border: '1px solid var(--border-color)', borderRadius: '6px', alignItems: 'center' }}>
+                        {info.imageLinks?.thumbnail ? (
+                          <img src={info.imageLinks.thumbnail} alt="cover" style={{ width: '40px', height: '60px', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '40px', height: '60px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>📖</div>
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{info.title}</h4>
+                          <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>{info.authors?.join(', ') || 'Unknown'}</p>
+                        </div>
+                        <motion.button 
+                          whileTap={tapShrink}
+                          style={{ backgroundColor: '#16a34a', color: 'white', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', border: 'none', cursor: 'pointer' }}
+                          onClick={() => {
+                            setBooks(prev => [book, ...prev]); // Add to library
+                            closeModal(); // Close everything
+                          }}
+                        >
+                          Add
+                        </motion.button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Status & Error UI */}
+            <AnimatePresence>
+              {ocrProgress && (
+                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ textAlign: 'center', color: '#a855f7', fontWeight: 'bold', fontSize: '14px' }}>
+                   {ocrProgress}
+                 </motion.div>
+              )}
+              {modalError && (
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} style={{ padding: '12px', backgroundColor: '#fee2e2', color: '#dc2626', borderRadius: '6px', fontSize: '14px', textAlign: 'center', border: '1px solid #f87171' }}>
+                  {modalError}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         );
       case 'ISBN Lookup':
         return (

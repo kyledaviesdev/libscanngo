@@ -7,7 +7,7 @@ import './App.css';
 // Importing our default book data (Google Books API format)
 import defaultBooks from './google_books_export.json';
 
-// Importing our animation recipes (make sure to include the new ones)
+// Importing our animation recipes
 import { 
   containerVariants, 
   itemVariants, 
@@ -17,6 +17,51 @@ import {
   modalOverlayVariants,
   modalContentVariants
 } from './animations';
+
+const HardwareScannerListener = ({ onScanSuccess }) => {
+  const scanBuffer = useRef('');
+  const lastKeyTime = useRef(Date.now());
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ignore keypresses if the user is typing inside an actual input field
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.contentEditable === 'true') {
+        return;
+      }
+
+      const currentTime = Date.now();
+      
+      // Clear buffer if the delay between characters is too long.
+      // Scanners emit keys < 30ms apart. Humans type slower.
+      if (currentTime - lastKeyTime.current > 50) {
+        scanBuffer.current = '';
+      }
+      
+      lastKeyTime.current = currentTime;
+
+      if (e.key === 'Enter') {
+        const finalString = scanBuffer.current.trim();
+        
+        // Check if it's a valid ISBN length
+        if (finalString.length === 10 || finalString.length === 13) {
+          onScanSuccess(finalString);
+        }
+        scanBuffer.current = ''; 
+        return;
+      }
+
+      // Buffer number inputs
+      if (e.key.length === 1 && /\d/.test(e.key)) {
+        scanBuffer.current += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onScanSuccess]);
+
+  return null; // Runs invisibly in the background
+};
 
 const BarcodeScannerPlugin = ({ onScanSuccess }) => {
   const scannerRef = useRef(null);
@@ -180,6 +225,7 @@ const VisionAIPlugin = ({ onProcessImage }) => {
 
 function App() {
   // --- STATE MANAGEMENT ---
+  const [catalogueName, setCatalogueName] = useState('Library Catalogue');
   const [books, setBooks] = useState(defaultBooks); 
   const [searchQuery, setSearchQuery] = useState(''); 
   const [activeModal, setActiveModal] = useState(null); 
@@ -189,9 +235,9 @@ function App() {
   const [ocrProgress, setOcrProgress] = useState(null);
   const fileInputRef = useRef(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [visionQuery, setVisionQuery] = useState('');      // Holds the editable OCR text
-  const [visionResults, setVisionResults] = useState([]);  // Holds the Google Books API results
-  const [isSearchingVision, setIsSearchingVision] = useState(false); // Loading state for the API
+  const [visionQuery, setVisionQuery] = useState('');      
+  const [visionResults, setVisionResults] = useState([]);  
+  const [isSearchingVision, setIsSearchingVision] = useState(false);
 
   // --- LOGIC FUNCTIONS ---
   const triggerFileSelect = () => fileInputRef.current.click();
@@ -200,22 +246,63 @@ function App() {
     const file = event.target.files[0];
     if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const importedData = JSON.parse(e.target.result);
-      const newBooks = Array.isArray(importedData) ? importedData : [importedData];
-      setBooks(newBooks);
-    } catch (err) {
-      alert("Failed to parse JSON. Ensure it matches the Google Books format.");
-    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedData = JSON.parse(e.target.result);
+        
+        // Verify if data contains our custom catalogue wrapper package
+        if (importedData && typeof importedData === 'object' && !Array.isArray(importedData) && 'books' in importedData) {
+          if (importedData.catalogueName) {
+            setCatalogueName(importedData.catalogueName);
+          }
+          const newBooks = Array.isArray(importedData.books) ? importedData.books : [importedData.books];
+          setBooks(newBooks);
+        } else {
+          // Fallback parsing for raw Google Book lists or isolated book metadata
+          const newBooks = Array.isArray(importedData) ? importedData : [importedData];
+          setBooks(newBooks);
+        }
+      } catch (err) {
+        alert("Failed to parse JSON. Ensure it matches the correct app catalogue format.");
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = null; 
   };
-  reader.readAsText(file);
-  event.target.value = null; 
-};
 
-// Fetch a book from the Google Books API using its ISBN
-const fetchBookByISBN = async (isbn) => {
+  const handleExport = () => {
+    // Structure containing catalogue metadata along with book collection values
+    const exportData = {
+      catalogueName: catalogueName.trim() || 'Library Catalogue',
+      books: books
+    };
+
+    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+      JSON.stringify(exportData, null, 2)
+    )}`;
+
+    // Build timestamp values matching YYYY-MM-DD_HH-MM-SS formats
+    const now = new Date();
+    const pad = (num) => String(num).padStart(2, '0');
+    
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const timeStr = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    
+    // Purge bad file characters from the custom title
+    const safeTitle = catalogueName.trim().replace(/[^a-zA-Z0-9-_]/g, '_') || 'Library_Catalogue';
+    const fileName = `${safeTitle}_${dateStr}_${timeStr}.json`;
+
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", jsonString);
+    downloadAnchor.setAttribute("download", fileName);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  // Fetch a book from the Google Books API using its ISBN
+  const fetchBookByISBN = async (isbn) => {
     setModalError(''); // Clear previous errors when trying again
     if (!isbn.trim()) {
       setModalError("Please enter an ISBN first.");
@@ -228,17 +315,56 @@ const fetchBookByISBN = async (isbn) => {
       const data = await response.json();
 
       if (data.totalItems > 0) {
-        const newBook = data.items[0]; 
-        setBooks(prevBooks => [newBook, ...prevBooks]);
+        const fetchedBook = data.items[0]; 
+        
+        setBooks(prevBooks => {
+          // Check if the book is already in the local library
+          const existingIndex = prevBooks.findIndex(b => b.id === fetchedBook.id);
+          
+          if (existingIndex >= 0) {
+            // Book exists: Create a copy and increment our local metadata
+            const updatedBooks = [...prevBooks];
+            const existingBook = updatedBooks[existingIndex];
+            
+            // Fallback just in case older data doesn't have localMeta yet
+            const currentMeta = existingBook.localMeta || { quantity: 0, available: 0 };
+            
+            updatedBooks[existingIndex] = {
+              ...existingBook,
+              localMeta: {
+                ...currentMeta,
+                quantity: currentMeta.quantity + 1,
+                available: currentMeta.available + 1
+              }
+            };
+            return updatedBooks;
+          } else {
+            // New book: Add it and attach our custom inventory tracking
+            const newBookWithMeta = {
+              ...fetchedBook,
+              localMeta: {
+                quantity: 1,
+                available: 1
+              }
+            };
+            return [newBookWithMeta, ...prevBooks];
+          }
+        });
+        
         closeModal(); 
       } else {
-        // UPDATE: Set the declarative error instead of alerting
         setModalError(`No book found for barcode: ${isbn}`);
       }
     } catch (error) {
       console.error("Error fetching from Google Books:", error);
       setModalError("Failed to connect to the Google Books API.");
     }
+  };
+
+  const handleGlobalScan = (scannedIsbn) => {
+    setActiveModal('Scan Barcode'); // Pop open the modal to show the user what's happening
+    setIsbnInput(scannedIsbn);
+    fetchBookByISBN(scannedIsbn);
   };
 
   const fetchBooksByText = async (query) => {
@@ -248,7 +374,6 @@ const fetchBookByISBN = async (isbn) => {
 
     try {
       const apiKey = process.env.REACT_APP_GOOGLE_BOOKS_API_KEY;
-      // Note: We use encodeURIComponent to handle spaces and special characters safely
       const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&key=${apiKey}`);
       const data = await response.json();
 
@@ -266,7 +391,32 @@ const fetchBookByISBN = async (isbn) => {
   };
 
   const deleteBook = (id) => {
-    setBooks(prev => prev.filter(book => book.id !== id));
+    setBooks(prevBooks => {
+      const existingIndex = prevBooks.findIndex(b => b.id === id);
+      
+      // If book isn't found, do nothing
+      if (existingIndex === -1) return prevBooks;
+
+      const existingBook = prevBooks[existingIndex];
+      const currentQuantity = existingBook.localMeta?.quantity || 1;
+      const currentAvailable = existingBook.localMeta?.available ?? 1;
+
+      if (currentQuantity > 1) {
+        const updatedBooks = [...prevBooks];
+        updatedBooks[existingIndex] = {
+          ...existingBook,
+          localMeta: {
+            ...existingBook.localMeta,
+            quantity: currentQuantity - 1,
+            available: Math.max(0, currentAvailable - 1)
+          }
+        };
+        return updatedBooks;
+      } else {
+        // Only 1 copy left, so remove the book entirely from the library
+        return prevBooks.filter(book => book.id !== id);
+      }
+    });
   };
 
   const filteredBooks = books.filter((book) => {
@@ -293,58 +443,50 @@ const fetchBookByISBN = async (isbn) => {
     switch (activeModal) {
       case 'Scan Barcode':
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            <p style={{ fontSize: '14px', color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
-              Hold the book's barcode steady in front of the camera.
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', textAlign: 'center', padding: '10px' }}>
+            <div style={{ fontSize: '48px', marginBottom: '10px' }}>📟</div>
+            <h3 style={{ margin: 0 }}>Scanner Ready</h3>
+            <p style={{ fontSize: '14px', color: 'var(--text-muted)', margin: 0 }}>
+              You don't need to click anything! Just pull the trigger on your hardware scanner to instantly process an ISBN.
             </p>
             
-            {/* Declarative animated error message */}
             <AnimatePresence>
               {modalError && (
                 <motion.div 
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  style={{ padding: '12px', backgroundColor: '#fee2e2', color: '#dc2626', borderRadius: '6px', fontSize: '14px', textAlign: 'center', border: '1px solid #f87171' }}
+                  style={{ padding: '12px', backgroundColor: '#fee2e2', color: '#dc2626', borderRadius: '6px', fontSize: '14px', textAlign: 'center', border: '1px solid #f87171', marginTop: '10px' }}
                 >
                   <strong>Scan Failed:</strong> {modalError}
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Toggle between the active camera and a reset button */}
-            {!modalError ? (
-              <BarcodeScannerPlugin 
-                onScanSuccess={(decodedISBN) => {
-                  const cleanISBN = decodedISBN.replace(/[^0-9]/g, '');
-                  
-                  // NEW: Guard clause to ensure it's a valid ISBN length
-                  if (cleanISBN.length !== 10 && cleanISBN.length !== 13) {
-                    setModalError(`Invalid barcode format scanned (${cleanISBN}). Please scan the main ISBN barcode.`);
-                    return;
-                  }
-
-                  setIsbnInput(cleanISBN); 
-                  fetchBookByISBN(cleanISBN);
-                }} 
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '15px 0' }} />
+            
+            <div className="form-group" style={{ textAlign: 'left' }}>
+              <label>Manual Fallback</label>
+              <input 
+                type="text" 
+                placeholder="Or type ISBN and press Enter..." 
+                value={isbnInput}
+                onChange={(e) => setIsbnInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') fetchBookByISBN(isbnInput);
+                }}
+                autoFocus
               />
-            ) : (
-              <motion.button 
-                whileTap={tapShrink}
-                className="btn btn-submit"
-                onClick={() => setModalError('')} // Clears error and re-mounts the camera
-              >
-                Try Scanning Again
-              </motion.button>
+            </div>
+            
+            {isbnInput && !modalError && (
+              <p style={{ fontSize: '14px', color: '#2563eb', fontWeight: 'bold' }}>Fetching data for: {isbnInput}...</p>
             )}
           </div>
         );
       case 'Vision AI':
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            
-            {/* STEP 1: CAPTURE & OCR */}
-            {/* Only show the camera if we haven't extracted text yet and don't have results */}
             {!visionQuery && visionResults.length === 0 && (
               <>
                 <p style={{ fontSize: '14px', color: 'var(--text-muted)', textAlign: 'center', margin: 0 }}>
@@ -366,7 +508,6 @@ const fetchBookByISBN = async (isbn) => {
                       
                       const extractedText = result.data.text.replace(/\n/g, ' ').trim();
                       if (extractedText.length > 3) {
-                        // SUCCESS: Move to Step 2 by setting the editable query
                         setVisionQuery(extractedText.substring(0, 100)); 
                       } else {
                         setModalError("No readable text found. Try again.");
@@ -381,8 +522,6 @@ const fetchBookByISBN = async (isbn) => {
               </>
             )}
 
-            {/* STEP 2: REVIEW & EDIT */}
-            {/* Show this if we have text from the OCR, but haven't fetched results yet */}
             {visionQuery && visionResults.length === 0 && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
                 <div className="form-group">
@@ -403,7 +542,7 @@ const fetchBookByISBN = async (isbn) => {
                     whileTap={tapShrink} 
                     className="btn btn-theme" 
                     style={{ flex: 1 }}
-                    onClick={() => setVisionQuery('')} // Go back to camera
+                    onClick={() => setVisionQuery('')} 
                   >
                     Retake
                   </motion.button>
@@ -419,21 +558,18 @@ const fetchBookByISBN = async (isbn) => {
               </motion.div>
             )}
 
-            {/* STEP 3: SELECT EDITION */}
-            {/* Show the list of books returned from the API */}
             {visionResults.length > 0 && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                   <label style={{ fontSize: '14px', fontWeight: 'bold' }}>Select Correct Edition:</label>
                   <button 
-                    onClick={() => setVisionResults([])} // Go back to edit
+                    onClick={() => setVisionResults([])} 
                     style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '12px', cursor: 'pointer', padding: 0 }}
                   >
                     ← Back to Edit
                   </button>
                 </div>
                 
-                {/* Scrollable list of results */}
                 <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '5px' }}>
                   {visionResults.map(book => {
                     const info = book.volumeInfo;
@@ -452,8 +588,8 @@ const fetchBookByISBN = async (isbn) => {
                           whileTap={tapShrink}
                           style={{ backgroundColor: '#16a34a', color: 'white', padding: '6px 12px', borderRadius: '4px', fontSize: '12px', border: 'none', cursor: 'pointer' }}
                           onClick={() => {
-                            setBooks(prev => [book, ...prev]); // Add to library
-                            closeModal(); // Close everything
+                            setBooks(prev => [book, ...prev]); 
+                            closeModal(); 
                           }}
                         >
                           Add
@@ -465,7 +601,6 @@ const fetchBookByISBN = async (isbn) => {
               </motion.div>
             )}
 
-            {/* Status & Error UI */}
             <AnimatePresence>
               {ocrProgress && (
                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ textAlign: 'center', color: '#a855f7', fontWeight: 'bold', fontSize: '14px' }}>
@@ -525,13 +660,16 @@ const fetchBookByISBN = async (isbn) => {
             </motion.button>
           </>
         );
-        case 'Book Details':
+      case 'Book Details':
         if (!selectedBook) return null;
         const volumeInfo = selectedBook.volumeInfo;
         
+        // Extract local inventory tracking values (fall back to 1 if empty)
+        const quantity = selectedBook.localMeta?.quantity || 1;
+        const available = selectedBook.localMeta?.available ?? 1;
+        
         return (
           <div className="book-detailed-view" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {/* Top Section: Cover & Key Metadata */}
             <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
               {volumeInfo.imageLinks?.thumbnail ? (
                 <img 
@@ -548,6 +686,32 @@ const fetchBookByISBN = async (isbn) => {
                 <p style={{ margin: '0 0 12px 0', color: 'var(--text-muted)', fontSize: '15px' }}>
                   By {volumeInfo.authors?.join(', ') || 'Unknown Author'}
                 </p>
+                
+                {/* STYLIZED INVENTORY STATUS FOR MODAL */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                  <span style={{ 
+                    fontSize: '12px', 
+                    fontWeight: 'bold', 
+                    color: available > 0 ? '#16a34a' : '#dc2626', 
+                    backgroundColor: available > 0 ? '#dcfce7' : '#fee2e2', 
+                    padding: '4px 10px', 
+                    borderRadius: '20px', 
+                    border: available > 0 ? '1px solid #bbf7d0' : '1px solid #fecaca'
+                  }}>
+                    🟢 {available} Available
+                  </span>
+                  <span style={{ 
+                    fontSize: '12px', 
+                    fontWeight: 'bold', 
+                    color: '#4b5563', 
+                    backgroundColor: '#f3f4f6', 
+                    padding: '4px 10px', 
+                    borderRadius: '20px', 
+                    border: '1px solid #e5e7eb' 
+                  }}>
+                    📦 {quantity} Total Copies
+                  </span>
+                </div>
                 
                 {volumeInfo.categories && (
                   <span className="book-badge" style={{ display: 'inline-block', marginBottom: '10px' }}>
@@ -566,7 +730,6 @@ const fetchBookByISBN = async (isbn) => {
               </div>
             </div>
             
-            {/* Middle Section: Scrollable Summary/Description */}
             {volumeInfo.description && (
               <>
                 <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '8px 0' }} />
@@ -586,7 +749,6 @@ const fetchBookByISBN = async (isbn) => {
               </>
             )}
             
-            {/* Bottom Section: System Identifiers (ISBNs) */}
             {volumeInfo.industryIdentifiers && (
               <div style={{ 
                 display: 'flex', 
@@ -612,8 +774,11 @@ const fetchBookByISBN = async (isbn) => {
   const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
   return (
-    // Updated className to include 'dark-mode' conditionally
     <div className={`App ${isDarkMode ? 'dark-mode' : ''}`}>
+      
+      {/* GLOBAL SCANNER INSTANCE */}
+      <HardwareScannerListener onScanSuccess={handleGlobalScan} />
+
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -622,17 +787,34 @@ const fetchBookByISBN = async (isbn) => {
         style={{ display: 'none' }} 
       />
 
-      {/* HEADER */}
       <header className="app-header">
         <div className="header-title-group">
           <div className="logo-placeholder">|||\</div>
           <div>
-            <h1>Library Catalogue</h1>
+            {/* INLINE EDITABLE TITLING FOR CATALOGUE NAME */}
+            <input 
+              type="text"
+              value={catalogueName}
+              onChange={(e) => setCatalogueName(e.target.value)}
+              placeholder="Enter Catalogue Name..."
+              title="Click to edit catalogue name"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-main)',
+                fontSize: '24px',
+                fontWeight: '600',
+                padding: 0,
+                margin: 0,
+                outline: 'none',
+                width: '100%',
+                fontFamily: 'inherit'
+              }}
+            />
             <p>Manage your book collection & lending</p>
           </div>
         </div>
         <div className="header-actions">
-          {/* NEW: Dark Mode Toggle Button */}
           <motion.button 
             whileTap={tapShrink} 
             className="btn btn-theme"
@@ -641,7 +823,14 @@ const fetchBookByISBN = async (isbn) => {
             {isDarkMode ? '☀️ Light' : '🌙 Dark'}
           </motion.button>
 
-          <motion.button whileTap={tapShrink} className="btn btn-export">↓ Export</motion.button>
+          <motion.button 
+            whileTap={tapShrink} 
+            className="btn btn-export"
+            onClick={handleExport}
+          >
+            ↓ Export
+          </motion.button>
+          
           <motion.button 
             whileTap={tapShrink} 
             className="btn btn-import" 
@@ -653,7 +842,6 @@ const fetchBookByISBN = async (isbn) => {
       </header>
 
       <main className="app-main">
-        {/* ACTION BAR */}
         <div className="action-bar">
           {['Scan Barcode', 'Vision AI', 'ISBN Lookup', 'Manual Entry'].map((text, i) => (
             <motion.button 
@@ -661,14 +849,13 @@ const fetchBookByISBN = async (isbn) => {
               whileHover={hoverLift} 
               whileTap={tapShrink} 
               className={`btn-large btn-style-${i}`}
-              onClick={() => setActiveModal(text)} // Opens the modal
+              onClick={() => setActiveModal(text)} 
             >
               {text}
             </motion.button>
           ))}
         </div>
 
-        {/* SEARCH SECTION */}
         <div className="search-container">
           <span className="search-icon">🔍</span>
           <input 
@@ -680,13 +867,11 @@ const fetchBookByISBN = async (isbn) => {
           />
         </div>
 
-        {/* LIST INFO */}
         <div className="list-header">
           <h2>{filteredBooks.length} {filteredBooks.length === 1 ? 'book' : 'books'} found</h2>
           <button className="stats-link-btn" style={{background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer'}}>Show Statistics</button>
         </div>
 
-        {/* THE BOOK LIST */}
         <motion.div 
           className="book-list"
           variants={containerVariants}
@@ -696,6 +881,7 @@ const fetchBookByISBN = async (isbn) => {
           <AnimatePresence mode='popLayout'>
             {filteredBooks.map((book) => {
               const info = book.volumeInfo;
+              const availableCopies = book.localMeta?.available ?? 1;
               
               return (
                 <motion.div 
@@ -704,18 +890,25 @@ const fetchBookByISBN = async (isbn) => {
                   variants={itemVariants}
                   layout 
                   exit="exit"
-                  whileHover={{ scale: 1.02, cursor: 'pointer' }} // Enhances UX visually
+                  whileHover={{ scale: 1.02, cursor: 'pointer' }} 
                   onClick={() => {
-                    setActiveModal('Book Details'); // Tells the modal to open
-                    setSelectedBook(book);          // Sends the book data to state
+                    setActiveModal('Book Details'); 
+                    setSelectedBook(book);          
                   }}
                 >
-                  <div className="book-cover-container">
+                  {/* COVER CONTAINER WITH INLINE HOVER ANCHORING */}
+                  <div className="book-cover-container" style={{ position: 'relative', overflow: 'hidden', borderRadius: '6px', marginRight: '20px', flexShrink: 0 }}>
                     {info.imageLinks?.thumbnail ? (
-                      <img src={info.imageLinks.thumbnail} alt={info.title} className="book-cover-img" style={{width: '80px', height: '100px', objectFit: 'cover', borderRadius: '6px', marginRight: '20px'}} />
+                      <img src={info.imageLinks.thumbnail} alt={info.title} className="book-cover-img" style={{ width: '80px', height: '100px', objectFit: 'cover', borderRadius: '6px', display: 'block' }} />
                     ) : (
-                      <div className="book-cover-placeholder"><span>📖</span></div>
+                      <div className="book-cover-placeholder" style={{ margin: 0 }}><span>📖</span></div>
                     )}
+                    
+                    {/* STYLIZED OVERLAY - SLIDES UP ON HOVER */}
+                    <div className="card-hover-overlay">
+                      <span className="overlay-status-dot" style={{ backgroundColor: availableCopies > 0 ? '#4ade80' : '#ef4444' }}></span>
+                      {availableCopies} Available
+                    </div>
                   </div>
                   
                   <div className="book-details">
@@ -732,7 +925,7 @@ const fetchBookByISBN = async (isbn) => {
                         <motion.button 
                           whileHover={iconHover} 
                           onClick={(e) => {
-                            e.stopPropagation(); // ← Prevents modal from popping open
+                            e.stopPropagation(); 
                             deleteBook(book.id);
                           }}
                           className="icon-btn delete-text"
@@ -752,7 +945,6 @@ const fetchBookByISBN = async (isbn) => {
         </motion.div>
       </main>
 
-      {/* GLOBAL MODAL RENDERER */}
       <AnimatePresence>
         {activeModal && (
           <motion.div 
@@ -761,9 +953,8 @@ const fetchBookByISBN = async (isbn) => {
             initial="hidden"
             animate="show"
             exit="exit"
-            onClick={closeModal} // Clicking background closes modal
+            onClick={closeModal} 
           >
-            {/* stopPropagation prevents clicks inside the modal box from closing it */}
             <motion.div 
               className="modal-content"
               variants={modalContentVariants}
@@ -781,7 +972,6 @@ const fetchBookByISBN = async (isbn) => {
                 </motion.button>
               </div>
               
-              {/* Inject the correct layout depending on state */}
               <div className="modal-body">
                 {renderModalContent()}
               </div>

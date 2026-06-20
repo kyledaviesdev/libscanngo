@@ -315,6 +315,14 @@ button {
   text-decoration: underline;
 }
 
+.book-list {
+  display: grid;
+  /* Creates exactly 3 columns that share the available space equally */
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px; /* Space between the cards */
+  width: 100%;
+}
+
 /* Book Card */
 .book-card {
   display: flex;
@@ -323,8 +331,19 @@ button {
   color: var(--text-main);
   border-radius: 10px;
   padding: 20px;
-  width: 400px;
+  width: auto; 
+  margin: 0;
   box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.book-cover-container {
+  position: relative;
+  width: 80px;      /* Force exactly 80px */
+  height: 100px;    /* Force exactly 100px */
+  overflow: hidden;
+  border-radius: 6px;
+  margin-right: 20px;
+  flex-shrink: 0;
 }
 
 .book-cover-placeholder {
@@ -342,6 +361,47 @@ button {
 .book-cover-placeholder span {
   font-size: 30px;
   color: white;
+}
+
+/* Stylized Hover Inventory Overlay */
+.card-hover-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(15, 23, 42, 0.95) 70%, rgba(15, 23, 42, 0.7));
+  color: #ffffff;
+  font-size: 10px; /* Slightly adjusted down for narrow 80px frames */
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 0;
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  
+  /* Start hidden and pushed downwards */
+  transform: translateY(100%);
+  opacity: 0;
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease;
+  pointer-events: none; /* Passes mouse actions right through to card trigger */
+  white-space: nowrap; 
+}
+
+/* Status Indicator Dot Inside Card Hover Overlay */
+.overlay-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Card State Hover Bindings */
+.book-card:hover .card-hover-overlay {
+  transform: translateY(0);
+  opacity: 1;
 }
 
 .book-details {

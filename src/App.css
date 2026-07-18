@@ -1,3 +1,12 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  overflow-x: hidden; /* Prevents accidental horizontal scrolling */
+  width: 100%;
+}
+
 /* Color Variables - Default (Light) */
 :root {
   --bg-app: #fafafa;
@@ -11,11 +20,11 @@
 
 /* Dark Mode Overrides */
 .dark-mode {
-  --bg-app: #0f172a;       /* Deep Navy */
-  --bg-card: #1e293b;      /* Lighter Navy */
+  --bg-app: #0f172a;       
+  --bg-card: #1e293b;      
   --bg-header: #1e293b;
-  --text-main: #f1f5f9;    /* Off-white */
-  --text-muted: #94a3b8;   /* Gray-blue */
+  --text-main: #f1f5f9;    
+  --text-muted: #94a3b8;   
   --border-color: #334155;
   --modal-overlay: rgba(0, 0, 0, 0.8);
 }
@@ -25,8 +34,9 @@
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-app);
   color: var(--text-main);
-  transition: background-color 0.3s ease, color 0.3s ease; /* Smooth transition */
+  transition: background-color 0.3s ease, color 0.3s ease;
   min-height: 100vh;
+  width: 100%;
 }
 
 /* Header Styles */
@@ -37,6 +47,7 @@
   padding: 20px 40px;
   background-color: var(--bg-header);
   border-bottom: 1px solid var(--border-color);
+  width: 100%;
 }
 
 .header-title-group {
@@ -46,10 +57,19 @@
 }
 
 .logo-placeholder {
-  font-size: 24px;
-  color: #2563eb;
-  font-weight: bold;
-  letter-spacing: -2px;
+  width: 48px;
+  height: 48px;
+  display: block;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.logo-placeholder img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .app-header h1 {
@@ -101,6 +121,7 @@ button {
   max-width: 1200px;
   margin: 0 auto;
   padding: 30px 40px;
+  width: 100%;
 }
 
 /* Action Bar (Large Buttons) */
@@ -109,6 +130,7 @@ button {
   grid-template-columns: repeat(4, 1fr);
   gap: 15px;
   margin-bottom: 25px;
+  width: 100%;
 }
 
 .btn-large {
@@ -118,33 +140,19 @@ button {
   border-radius: 8px;
 }
 
-/* Scan Barcode */
-.btn-style-0 { 
-  background-color: #2563eb; 
-}
-
-/* Vision AI */
-.btn-style-1 { 
-  background-color: #a855f7; 
-}
-
-/* ISBN Lookup */
-.btn-style-2 { 
-  background-color: #6366f1; 
-}
-
-/* Manual Entry */
-.btn-style-3 { 
-  background-color: #16a34a; 
-}
+/* Modal and Feature Buttons */
+.btn-style-0 { background-color: #2563eb; }
+.btn-style-1 { background-color: #a855f7; }
+.btn-style-2 { background-color: #6366f1; }
+.btn-style-3 { background-color: #16a34a; }
 
 /* --- MODAL STYLES --- */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
@@ -162,6 +170,8 @@ button {
   padding: 24px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
   position: relative;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .modal-header {
@@ -206,6 +216,7 @@ button {
   position: relative;
   overflow: hidden;
   margin-bottom: 15px;
+  width: 100%;
 }
 
 .scan-line {
@@ -241,7 +252,7 @@ button {
   color: var(--text-muted);
 }
 
-.form-group input {
+.form-group input, .form-group select {
   padding: 10px 12px;
   border: 1px solid #ccc;
   border-radius: 6px;
@@ -249,9 +260,10 @@ button {
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
   color: var(--text-main);
+  width: 100%;
 }
 
-.form-group input:focus {
+.form-group input:focus, .form-group select:focus {
   outline: none;
   border-color: #2563eb;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
@@ -275,6 +287,7 @@ button {
   border-radius: 8px;
   padding: 12px 15px;
   margin-bottom: 30px;
+  width: 100%;
 }
 
 .search-icon {
@@ -288,7 +301,6 @@ button {
   width: 100%;
   font-size: 16px;
   background-color: var(--bg-card);
-  border: 1px solid var(--border-color);
   color: var(--text-main);
 }
 
@@ -298,6 +310,7 @@ button {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
+  width: 100%;
 }
 
 .list-header h2 {
@@ -317,9 +330,8 @@ button {
 
 .book-list {
   display: grid;
-  /* Creates exactly 3 columns that share the available space equally */
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px; /* Space between the cards */
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
   width: 100%;
 }
 
@@ -331,15 +343,15 @@ button {
   color: var(--text-main);
   border-radius: 10px;
   padding: 20px;
-  width: auto; 
-  margin: 0;
+  width: 100%; 
   box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  height:auto;
 }
 
 .book-cover-container {
   position: relative;
-  width: 80px;      /* Force exactly 80px */
-  height: 100px;    /* Force exactly 100px */
+  width: 80px;      
+  height: 100px;    
   overflow: hidden;
   border-radius: 6px;
   margin-right: 20px;
@@ -347,15 +359,12 @@ button {
 }
 
 .book-cover-placeholder {
-  width: 80px;
-  height: 100px;
+  width: 100%;
+  height: 100%;
   background-color: #8b5cf6;
-  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 20px;
-  flex-shrink: 0;
 }
 
 .book-cover-placeholder span {
@@ -363,7 +372,6 @@ button {
   color: white;
 }
 
-/* Stylized Hover Inventory Overlay */
 .card-hover-overlay {
   position: absolute;
   bottom: 0;
@@ -371,7 +379,7 @@ button {
   right: 0;
   background: linear-gradient(to top, rgba(15, 23, 42, 0.95) 70%, rgba(15, 23, 42, 0.7));
   color: #ffffff;
-  font-size: 10px; /* Slightly adjusted down for narrow 80px frames */
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1px;
   display: flex;
@@ -381,16 +389,13 @@ button {
   padding: 6px 0;
   border-bottom-left-radius: 6px;
   border-bottom-right-radius: 6px;
-  
-  /* Start hidden and pushed downwards */
   transform: translateY(100%);
   opacity: 0;
   transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease;
-  pointer-events: none; /* Passes mouse actions right through to card trigger */
+  pointer-events: none;
   white-space: nowrap; 
 }
 
-/* Status Indicator Dot Inside Card Hover Overlay */
 .overlay-status-dot {
   width: 6px;
   height: 6px;
@@ -398,7 +403,6 @@ button {
   display: inline-block;
 }
 
-/* Card State Hover Bindings */
 .book-card:hover .card-hover-overlay {
   transform: translateY(0);
   opacity: 1;
@@ -406,6 +410,7 @@ button {
 
 .book-details {
   flex-grow: 1;
+  min-width: 0; 
 }
 
 .book-title-row {
@@ -418,11 +423,16 @@ button {
 .book-title-row h3 {
   margin: 0;
   font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 10px;
 }
 
 .book-card-actions {
   display: flex;
-  gap: 8px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .icon-btn {
@@ -439,6 +449,9 @@ button {
   margin: 0 0 10px 0;
   font-size: 14px;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .book-badge {
@@ -449,11 +462,221 @@ button {
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
-  margin-bottom: 15px;
+  margin-bottom: 5px;
 }
 
-.book-date {
-  margin: 0;
-  font-size: 12px;
+/* --- ORGANIZATION TOOLBAR --- */
+.organization-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 12px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-group label {
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-muted);
+}
+
+.toolbar-group select {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  font-size: 14px;
+  outline: none;
+  cursor: pointer;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+/* --- SERIES HEADERS --- */
+.series-header {
+  grid-column: 1 / -1; 
+  margin-top: 20px;
+  padding-bottom: 5px;
+  border-bottom: 2px solid var(--border-color);
+  color: var(--text-main);
+  width: 100%;
+}
+
+.series-header h3 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+/* --- DRAG AND DROP STATES --- */
+.draggable-card {
+  cursor: grab;
+}
+
+.draggable-card:active {
+  cursor: grabbing !important;
+}
+
+.draggable-card.dragging {
+  opacity: 0.4;
+  box-shadow: 0 0 15px rgba(37, 99, 235, 0.4);
+  transform: scale(0.98);
+}
+
+/* --- MODAL INPUTS & TAGS --- */
+.modal-meta-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.modal-meta-input:focus, .tag-input:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.custom-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.custom-tag-pill {
+  background-color: #dbeafe;
+  color: #1e40af;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dark-mode .custom-tag-pill {
+  background-color: #1e3a8a;
+  color: #dbeafe;
+}
+
+.custom-tag-pill button {
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.custom-tag-pill button:hover {
+  opacity: 1;
+}
+
+.tag-input {
+  border: 1px dashed var(--border-color);
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  color: var(--text-main);
+  width: 180px;
+}
+
+
+/* ========================================================= */
+/* --- RESPONSIVE DESIGN (Tablets & Mobile) --- */
+/* ========================================================= */
+
+/* Tablet Layout (Screens smaller than 900px) */
+@media screen and (max-width: 900px) {
+  .app-main {
+    padding: 20px;
+  }
+  
+  .app-header {
+    padding: 20px;
+  }
+  
+  .action-bar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Mobile Layout (Screens smaller than 600px) */
+@media screen and (max-width: 600px) {
+  .app-main {
+    padding: 15px;
+  }
+
+  .app-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+    padding: 15px;
+  }
+
+  .header-title-group {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  .header-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  } 
+
+  .action-bar {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .organization-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+  }
+
+  .toolbar-group {
+    justify-content: space-between;
+  }
+
+  .list-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .list-header > div {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .modal-content {
+    padding: 15px;
+    width: 95%;
+  }
 }
